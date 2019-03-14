@@ -4,7 +4,7 @@
 ## 安装
 
 ```
-composer require codeages/plumber
+composer require codeages/plumber2
 ```
 
 ## 使用
