@@ -1,0 +1,4 @@
+/vendor
+/.idea
+/example/plumber.pid
+/example/plumber.log
