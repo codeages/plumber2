@@ -36,7 +36,20 @@ $options = [
 
 ];
 
+class ExampleContainer implements \Psr\Container\ContainerInterface
+{
+    public function get($id)
+    {
+        // TODO: Implement get() method.
+    }
+
+    public function has($id)
+    {
+        // TODO: Implement has() method.
+    }
+}
+
 return [
     'options' => $options,
-    'container' => null
+    'container' => new ExampleContainer(),
 ];

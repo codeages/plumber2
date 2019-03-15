@@ -39,7 +39,7 @@ if (!file_exists($bootstrapFile)) {
 
 $bootstrap = require $bootstrapFile;
 
-$plumber = new \Codeages\Plumber\Plumber($bootstrap['options']);
+$plumber = new \Codeages\Plumber\Plumber($bootstrap['options'], $bootstrap['container']);
 
 $plumber->main($op);
 

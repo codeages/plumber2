@@ -1,17 +1,18 @@
 <?php
 namespace Codeages\Plumber;
 
-use Codeages\RateLimiter\RateLimiter;
-use Codeages\RateLimiter\Storage\RedisStorage;
 use Monolog\ErrorHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
+use Psr\Container\ContainerInterface;
 use Psr\Log\LoggerAwareInterface;
 use Swoole\Process;
 
 class Plumber
 {
     private $options;
+
+    private $container;
 
     private $pidFile;
 
@@ -23,9 +24,10 @@ class Plumber
 
     const LOCK_PROCESS_ERROR = 2;
 
-    public function __construct(array $options)
+    public function __construct(array $options, ContainerInterface $container = null)
     {
         $this->options = OptionsResolver::resolve($options);
+        $this->container = $container;
         $this->pidFile = new PidFile($options['pid_path']);
         $this->queueFactory = new QueueFactory($options['queues']);
         $this->limiterFactory = new RateLimiterFactory($options['rate_limiter']);
@@ -98,6 +100,10 @@ class Plumber
 
             if ($worker instanceof  ProcessAwareInterface) {
                 $worker->setProcess($pool->getProcess());
+            }
+
+            if ($worker instanceof  ContainerAwareInterface && $this->container) {
+                $worker->setContainer($this->container);
             }
 
             $consumeLimiter = !empty($options['consume_limiter']) ? $this->limiterFactory->create($options['consume_limiter']) : null;
