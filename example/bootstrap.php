@@ -1,6 +1,7 @@
 <?php
 
 $options = [
+    'app_name' => 'ExampleWorker',
     'queues' => [
         'default' => [
             'type' => 'redis',
@@ -13,6 +14,12 @@ $options = [
             'storage' => 'redis',
             'redis' => ['host' => '127.0.0.1', 'port' => '6379'],
             'allowance' => 5, // 限制每60秒最多消费1000个
+            'period' => 60,
+        ],
+        'worker_recreate' => [ // 这个配置必须存在，用于限制 Worker 进程被重新创建的频率，以避免Worker程序异常退出以及消息队列出问题时导致进程不断的退出创建的问题。
+            'storage' => 'redis',
+            'redis' => ['host' => '127.0.0.1', 'port' => '6379'],
+            'allowance' => 10,
             'period' => 60,
         ]
     ],

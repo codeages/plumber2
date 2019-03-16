@@ -72,6 +72,12 @@ class Plumber
             exit(self::LOCK_PROCESS_ERROR);
         }
 
+        if (isset($this->options['app_name'])) {
+            @swoole_set_process_name(sprintf('plumber: [%s] master', $this->options['app_name']));
+        } else {
+            @swoole_set_process_name('plumber: master');
+        }
+
         $logger = $this->createLogger($daemon);
         ErrorHandler::register($logger);
 
@@ -87,11 +93,31 @@ class Plumber
                 $running = false;
             });
 
-            echo "Worker#{$workerId} is started\n";
+            $process = $pool->getProcess();
             $options = $workersOptions[$workerId];
 
-//            $process = $pool->getProcess();
-//            @$process->name("php worker {R$workerId}");
+            $recreateLimiter = $this->limiterFactory->create('worker_recreate');
+            $remainTimes = $recreateLimiter->getAllow($workerId);
+            if ($remainTimes <= 0) {
+                $logger->error("[{$this->options['app_name']}] queue `{$options['tube']}` worker #{$workerId} restart failed.");
+                if (isset($this->options['app_name'])) {
+                    @$process->name("plumber: [{$this->options['app_name']}] queue `{$options['tube']}` worker - failed");
+                } else {
+                    @$process->name("plumber: queue `{$options['tube']}` worker - failed");
+                }
+
+                while (true) {
+                    pcntl_signal_dispatch();
+                    sleep(2);
+                }
+            }
+            $recreateLimiter->check($workerId);
+
+            if (isset($this->options['app_name'])) {
+                @$process->name("plumber: [{$this->options['app_name']}] queue `{$options['tube']}` worker");
+            } else {
+                @$process->name("plumber: queue `{$options['tube']}` worker");
+            }
 
             $worker = new $options['class'];
             if ($worker instanceof LoggerAwareInterface) {
