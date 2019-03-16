@@ -1,6 +1,7 @@
 <?php
 namespace Codeages\Plumber;
 
+use Codeages\RateLimiter\RateLimiter;
 use Monolog\ErrorHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
@@ -82,9 +83,10 @@ class Plumber
         ErrorHandler::register($logger);
 
         $workersOptions = $this->getWorkersOptions();
+        $recreateLimiter = $this->createWorkerRecreateLimitor();
 
         $pool = new Process\Pool(count($workersOptions));
-        $pool->on('WorkerStart', function($pool, $workerId) use ($workersOptions, $logger) {
+        $pool->on('WorkerStart', function($pool, $workerId) use ($workersOptions, $logger, $recreateLimiter) {
             $running = true;
             pcntl_signal(SIGTERM, function () use (&$running) {
                 $running = false;
@@ -96,14 +98,13 @@ class Plumber
             $process = $pool->getProcess();
             $options = $workersOptions[$workerId];
 
-            $recreateLimiter = $this->limiterFactory->create('worker_recreate');
             $remainTimes = $recreateLimiter->getAllow($workerId);
             if ($remainTimes <= 0) {
                 $logger->error("[{$this->options['app_name']}] queue `{$options['tube']}` worker #{$workerId} restart failed.");
                 if (isset($this->options['app_name'])) {
-                    @$process->name("plumber: [{$this->options['app_name']}] queue `{$options['tube']}` worker - failed");
+                    @$process->name("plumber: [{$this->options['app_name']}] queue `{$options['tube']}` worker - stoped");
                 } else {
-                    @$process->name("plumber: queue `{$options['tube']}` worker - failed");
+                    @$process->name("plumber: queue `{$options['tube']}` worker - stoped");
                 }
 
                 while (true) {
@@ -111,12 +112,18 @@ class Plumber
                     sleep(2);
                 }
             }
+
+            if ($remainTimes < $recreateLimiter->getMaxAllowance()) {
+                $logger->info("sleep 1 second.");
+                sleep(1);
+            }
+
             $recreateLimiter->check($workerId);
 
             if (isset($this->options['app_name'])) {
-                @$process->name("plumber: [{$this->options['app_name']}] queue `{$options['tube']}` worker");
+                @$process->name("plumber: [{$this->options['app_name']}] queue `{$options['tube']}` worker - running");
             } else {
-                @$process->name("plumber: queue `{$options['tube']}` worker");
+                @$process->name("plumber: queue `{$options['tube']}` worker - running");
             }
 
             $worker = new $options['class'];
@@ -243,5 +250,15 @@ class Plumber
         }
 
         return $options;
+    }
+
+    private function createWorkerRecreateLimitor()
+    {
+        return new RateLimiter(
+            'plumber:rate_limiter:worker_recreate',
+            10,
+            60,
+            new SwooleTableRateLimiterStorage()
+        );
     }
 }
