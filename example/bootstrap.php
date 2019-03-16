@@ -12,7 +12,7 @@ $options = [
     'rate_limiter' => [
         'default' => [
             'storage' => 'redis',
-            'redis' => ['host' => '127.0.0.1', 'port' => '6379', 'password' => ''],
+            'redis' => ['host' => '127.0.0.1', 'port' => '6379', 'password' => null],
             'allowance' => 5, // 限制每60秒最多消费1000个
             'period' => 60,
         ]

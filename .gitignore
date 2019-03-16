@@ -2,3 +2,4 @@
 /.idea
 /example/plumber.pid
 /example/plumber.log
+/composer.lock
