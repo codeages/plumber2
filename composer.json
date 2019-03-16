@@ -1,6 +1,7 @@
 {
     "name": "codeages/plumber2",
     "type": "project",
+    "license": "MIT",
     "authors": [
         {
             "name": "L1 L31",
