@@ -1,5 +1,5 @@
 <?php
-namespace Codeages\Plumber;
+namespace Codeages\Plumber\Queue;
 
 class QueueFactory
 {

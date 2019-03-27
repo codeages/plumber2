@@ -1,6 +1,7 @@
 <?php
 namespace Codeages\Plumber;
 
+use Codeages\Plumber\Queue\QueueFactory;
 use Codeages\RateLimiter\RateLimiter;
 use Monolog\ErrorHandler;
 use Monolog\Handler\StreamHandler;
@@ -33,11 +34,11 @@ class Plumber
 
     const WORKER_STATUS_FAILED = 'failed';
 
+
     /**
      * Plumber constructor.
      * @param array $options
      * @param ContainerInterface|null $container
-     * @throws QueueException
      */
     public function __construct(array $options, ContainerInterface $container = null)
     {
@@ -152,6 +153,8 @@ class Plumber
             }
 
             $queue = $this->queueFactory->create($options['queue']);
+            $topic = $queue->listenTopic($options['tube']);
+
             while ($running) {
                 if ($consumeLimiter) {
                     $remainTimes = $consumeLimiter->getAllow('consume');
@@ -164,7 +167,7 @@ class Plumber
                     }
                 }
 
-                $job = $queue->reserveJob($options['tube'], true);
+                $job = $topic->reserveJob(true);
                 pcntl_signal_dispatch();
                 if (is_null($job)) {
                     continue;
@@ -180,13 +183,13 @@ class Plumber
                     $code = $worker->execute($job);
                     switch ($code) {
                         case WorkerInterface::FINISH :
-                            $queue->finishJob($options['tube'], $job);
+                            $topic->finishJob($job);
                             break;
                         case WorkerInterface::BURY :
-                            $queue->buryJob($options['tube'], $job);
+                            $topic->buryJob($job);
                             break;
                         case WorkerInterface::RETRY :
-                            $queue->putJob($options['tube'], $job);
+                            $topic->putJob($job);
                             break;
                         default:
                             throw new PlumberException("Worker execute must return code.");

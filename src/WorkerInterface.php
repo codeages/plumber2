@@ -2,6 +2,8 @@
 
 namespace Codeages\Plumber;
 
+use Codeages\Plumber\Queue\Job;
+
 interface WorkerInterface
 {
     /**

@@ -3,7 +3,7 @@
 namespace Codeages\Plumber\Example;
 
 use Codeages\Plumber\AbstractWorker;
-use Codeages\Plumber\Job;
+use Codeages\Plumber\Queue\Job;
 
 class Example2Worker extends AbstractWorker
 {
