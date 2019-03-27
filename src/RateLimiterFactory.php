@@ -20,17 +20,17 @@ class RateLimiterFactory
      * @return RateLimiter
      *
      * @throws PlumberException
-     * @throws QueueException
+     * @throws PlumberException
      */
     public function create($name)
     {
         if (!isset($this->options[$name])) {
-            throw new QueueException("RateLimiter '{$name}' config is not exist.");
+            throw new PlumberException("RateLimiter '{$name}' config is not exist.");
         }
 
         $options = $this->options[$name];
         if (!isset($options['storage'])) {
-            throw new QueueException("RateLimiter '{$name}' config is invalid.");
+            throw new PlumberException("RateLimiter '{$name}' config is invalid.");
         }
 
         switch ($options['storage']) {
