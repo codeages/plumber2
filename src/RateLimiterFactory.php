@@ -16,7 +16,9 @@ class RateLimiterFactory
 
     /**
      * @param $name
+     *
      * @return RateLimiter
+     *
      * @throws PlumberException
      * @throws QueueException
      */

@@ -1,6 +1,8 @@
 <?php
+
 namespace Codeages\Plumber;
 
+use Codeages\Plumber\Queue\Job;
 use Codeages\Plumber\Queue\QueueFactory;
 use Codeages\RateLimiter\RateLimiter;
 use Monolog\ErrorHandler;
@@ -12,16 +14,6 @@ use Swoole\Process;
 
 class Plumber
 {
-    private $options;
-
-    private $container;
-
-    private $pidFile;
-
-    private $queueFactory;
-
-    private $limiterFactory;
-
     const ALREADY_RUNNING_ERROR = 1;
 
     const LOCK_PROCESS_ERROR = 2;
@@ -34,28 +26,52 @@ class Plumber
 
     const WORKER_STATUS_FAILED = 'failed';
 
+    private $op;
+
+    private $options;
+
+    private $container;
+
+    private $pidFile;
+
+    private $queueFactory;
+
+    private $limiterFactory;
+
+    private $logger;
+
+    private $reserveTimes = 1;
 
     /**
      * Plumber constructor.
-     * @param array $options
+     *
+     * @param string                  $op
+     * @param array                   $options
      * @param ContainerInterface|null $container
+     *
+     * @throws PlumberException
+     * @throws \Exception
      */
-    public function __construct(array $options, ContainerInterface $container = null)
+    public function __construct(string $op, array $options, ContainerInterface $container = null)
     {
+        $this->op = $op;
         $this->options = OptionsResolver::resolve($options);
         $this->container = $container;
+
+        $this->logger = $logger = $this->createLogger();
+        ErrorHandler::register($logger);
+
         $this->pidFile = new PidFile($options['pid_path']);
-        $this->queueFactory = new QueueFactory($options['queues']);
+        $this->queueFactory = new QueueFactory($options['queues'], $logger);
         $this->limiterFactory = new RateLimiterFactory($options['rate_limiter']);
     }
 
     /**
-     * @param $op
      * @throws \Exception
      */
-    public function main($op)
+    public function main()
     {
-        switch ($op) {
+        switch ($this->op) {
             case 'run':
                 $this->start(false);
                 break;
@@ -71,9 +87,9 @@ class Plumber
         }
     }
 
-
     /**
      * @param bool $daemon
+     *
      * @throws \Exception
      */
     private function start($daemon = false)
@@ -94,14 +110,13 @@ class Plumber
 
         $this->setMasterProcessName();
 
-        $logger = $this->createLogger($daemon);
-        ErrorHandler::register($logger);
+        $logger = $this->logger;
 
         $workersOptions = $this->getWorkersOptions();
         $recreateLimiter = $this->createWorkerRecreateLimiter();
 
         $pool = new Process\Pool(count($workersOptions));
-        $pool->on('WorkerStart', function(Process\Pool $pool, $workerId) use ($workersOptions, $logger, $recreateLimiter) {
+        $pool->on('WorkerStart', function (Process\Pool $pool, $workerId) use ($workersOptions, $logger, $recreateLimiter) {
             $running = true;
             pcntl_signal(SIGTERM, function () use (&$running) {
                 $running = false;
@@ -114,17 +129,18 @@ class Plumber
 
             $remainTimes = $recreateLimiter->getAllow($workerId);
             if ($remainTimes <= 0) {
-                $logger->error("[{$this->options['app_name']}] queue `{$options['topic']}` worker #{$workerId} restart failed.");
+                $logger->error("worker #{$workerId}, topic {$options['topic']}: worker restart failed.");
                 $this->setWorkerProcessName($pool, $workerId, $options['topic'], self::WORKER_STATUS_FAILED);
 
                 while (true) {
                     pcntl_signal_dispatch();
+                    $logger->error("worker #{$workerId}, topic {$options['topic']}: worker is failed.");
                     sleep(2);
                 }
             }
 
             if ($remainTimes < $recreateLimiter->getMaxAllowance()) {
-                $logger->info("sleep 1 second.");
+                $logger->notice("worker #{$workerId}, topic {$options['topic']}: worker is restarting, remain {$remainTimes} times.");
                 sleep(1);
             }
 
@@ -133,7 +149,7 @@ class Plumber
             $this->setWorkerProcessName($pool, $workerId, $options['topic'], self::WORKER_STATUS_IDLE);
 
             /** @var WorkerInterface $worker */
-            $worker = new $options['class'];
+            $worker = new $options['class']();
 
             if ($worker instanceof LoggerAwareInterface) {
                 $worker->setLogger($logger);
@@ -155,11 +171,13 @@ class Plumber
             $queue = $this->queueFactory->create($options['queue']);
             $topic = $queue->listenTopic($options['topic']);
 
+            $logger->info("worker #{$workerId}, topic {$options['topic']}: worker started.");
+
             while ($running) {
                 if ($consumeLimiter) {
                     $remainTimes = $consumeLimiter->getAllow('consume');
                     if ($remainTimes <= 0) {
-                        $logger->notice("Worker '{$options['class']}' consume limited.");
+                        $logger->notice("worker #{$workerId}, topic {$options['topic']}: consume limited.");
                         $this->setWorkerProcessName($pool, $workerId, $options['topic'], self::WORKER_STATUS_LIMITED);
                         pcntl_signal_dispatch();
                         sleep(2);
@@ -167,7 +185,18 @@ class Plumber
                     }
                 }
 
+                if (0 === $this->reserveTimes % 100) {
+                    $logger->info("worker #{$workerId}, topic {$options['topic']}: reserving {$this->reserveTimes} times.");
+                }
+
                 $job = $topic->reserveJob(true);
+
+                if ($job) {
+                    $logger->info("worker #{$workerId}, topic {$options['topic']}: reserved job #{$job->getId()}.", $job->toArray());
+                }
+
+                ++$this->reserveTimes;
+
                 pcntl_signal_dispatch();
                 if (is_null($job)) {
                     continue;
@@ -182,17 +211,29 @@ class Plumber
                     $this->setWorkerProcessName($pool, $workerId, $options['topic'], self::WORKER_STATUS_BUSY);
                     $code = $worker->execute($job);
                     switch ($code) {
-                        case WorkerInterface::FINISH :
+                        case WorkerInterface::FINISH:
                             $topic->finishJob($job);
+                            $logger->info("worker #{$workerId}, topic {$options['topic']}: finish job #{$job->getId()}.");
                             break;
-                        case WorkerInterface::BURY :
+                        case WorkerInterface::BURY:
                             $topic->buryJob($job);
+                            $logger->notice("worker #{$workerId}, topic {$options['topic']}: bury job #{$job->getId()}.");
                             break;
-                        case WorkerInterface::RETRY :
-                            $topic->putJob($job);
+                        case WorkerInterface::RETRY:
+                            $topic->finishJob($job);
+
+                            $retryJob = new Job();
+                            $retryJob->setId($job->getId());
+                            $retryJob->setDelay($job->getDelay());
+                            $retryJob->setPriority($job->getPriority());
+                            $retryJob->setTtr($job->getTtr());
+                            $retryJob->setBody($job->getBody());
+
+                            $topic->putJob($retryJob);
+                            $logger->info("worker #{$workerId}, topic {$options['topic']}: retry job #{$job->getId()}, new job #{$retryJob->getId()}.");
                             break;
                         default:
-                            throw new PlumberException("Worker execute must return code.");
+                            throw new PlumberException('Worker execute must return code.');
                     }
 
                     $this->setWorkerProcessName($pool, $workerId, $options['topic'], self::WORKER_STATUS_IDLE);
@@ -205,7 +246,7 @@ class Plumber
 
         $pool->on('WorkerStop', function (Process\Pool $pool, $workerId) use ($daemon, $logger) {
             if ($daemon) {
-                $logger->info("worker#{$workerId} is stopped.");
+                $logger->info("worker #{$workerId} is stopped.");
             }
         });
 
@@ -238,7 +279,6 @@ class Plumber
         }
     }
 
-
     /**
      * @throws \Exception
      */
@@ -248,22 +288,26 @@ class Plumber
 
         sleep(1);
 
-        echo "plumber is starting...[OK]";
+        echo 'plumber is starting...[OK]';
         $this->start(true);
     }
 
     /**
-     * @param bool $daemon
+     * @param $op
+     *
      * @return Logger
+     *
      * @throws \Exception
      */
-    private function createLogger($daemon = true)
+    private function createLogger()
     {
-        $logger = new Logger('plumber');
-        if ($daemon) {
-            $logger->pushHandler(new StreamHandler($this->options['log_path']));
-        } else {
+        $name = isset($this->options['app_name']) ? "{$this->options['app_name']}.plumber" : 'plumber';
+
+        $logger = new Logger($name);
+        if ('run' == $this->op) {
             $logger->pushHandler(new StreamHandler('php://output'));
+        } else {
+            $logger->pushHandler(new StreamHandler($this->options['log_path']));
         }
 
         return $logger;
@@ -274,9 +318,9 @@ class Plumber
         $options = [];
         $workerId = 0;
         foreach ($this->options['workers'] as $workerOptions) {
-            for ($i = 1; $i <= $workerOptions['num'] ?? 1; $i ++) {
+            for ($i = 1; $i <= $workerOptions['num'] ?? 1; ++$i) {
                 $options[$workerId] = $workerOptions;
-                $workerId ++;
+                ++$workerId;
             }
         }
 

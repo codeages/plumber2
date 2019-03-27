@@ -20,8 +20,8 @@ class RedisQueueTest extends \PHPUnit\Framework\TestCase
         $m3 = 'message_3';
 
         $q->push('test', $m1);
-        $q->push('test',$m2);
-        $q->push('test',$m3);
+        $q->push('test', $m2);
+        $q->push('test', $m3);
 
         $pm1 = $q->pop('test');
         $pm2 = $q->pop('test');

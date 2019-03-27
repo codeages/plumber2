@@ -1,4 +1,5 @@
 <?php
+
 namespace Codeages\Plumber\Queue;
 
 class Job
@@ -6,7 +7,7 @@ class Job
     /**
      * Job ID
      *
-     * @var integer
+     * @var int
      */
     private $id;
 
@@ -18,26 +19,19 @@ class Job
     private $body;
 
     /**
-     * @var integer
+     * @var int
      */
     private $priority;
 
     /**
-     * @var integer
+     * @var int
      */
     private $delay;
 
     /**
-     * @var integer
+     * @var int
      */
     private $ttr;
-
-    /**
-     * Job retry execute times
-     *
-     * @var integer
-     */
-    private $retryTimes = 0;
 
     /**
      * @return int
@@ -69,22 +63,6 @@ class Job
     public function setBody($body)
     {
         $this->body = $body;
-    }
-
-    /**
-     * @return int
-     */
-    public function getRetryTimes()
-    {
-        return $this->retryTimes;
-    }
-
-    /**
-     * @param int $retryTimes
-     */
-    public function setRetryTimes($retryTimes)
-    {
-        $this->retryTimes = $retryTimes;
     }
 
     /**
@@ -133,5 +111,10 @@ class Job
     public function setTtr(int $ttr): void
     {
         $this->ttr = $ttr;
+    }
+
+    public function toArray(): array
+    {
+        return get_object_vars($this);
     }
 }

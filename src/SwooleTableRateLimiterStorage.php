@@ -2,7 +2,6 @@
 
 namespace Codeages\Plumber;
 
-
 use Codeages\RateLimiter\Storage\Storage;
 use Swoole\Table;
 

@@ -9,7 +9,7 @@ class Example2Worker extends AbstractWorker
 {
     public function execute(Job $job)
     {
-        $this->logger->info("hello example2 worker....");
+        $this->logger->info("execute job #{$job->getId()}, body: {$job->getBody()}");
 
         return self::FINISH;
     }

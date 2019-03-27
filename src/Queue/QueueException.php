@@ -6,5 +6,4 @@ use Codeages\Plumber\PlumberException;
 
 class QueueException extends PlumberException
 {
-
 }

@@ -2,12 +2,13 @@
 
 namespace Codeages\Plumber;
 
-
 class OptionsResolver
 {
     /**
      * @param array $options
+     *
      * @return array
+     *
      * @throws PlumberException
      */
     public static function resolve(array $options)
@@ -87,7 +88,7 @@ class OptionsResolver
                 throw new PlumberException("Option 'queues[$i].type' value must be in [redis, beanstalk].");
             }
 
-            if ($queueOptions['type'] == 'redis') {
+            if ('redis' == $queueOptions['type']) {
                 if (!isset($queueOptions['host'])) {
                     throw new PlumberException("Option 'queues[$i].host' is missing.");
                 }
@@ -100,5 +101,4 @@ class OptionsResolver
 
         return $options;
     }
-
 }

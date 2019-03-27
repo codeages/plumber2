@@ -20,7 +20,7 @@ class RedisTopic implements TopicInterface
         $this->name = $name;
     }
 
-    public function reserveJob($blocking = false, $timeout = 2):?Job
+    public function reserveJob($blocking = false, $timeout = 2): ?Job
     {
         if ($blocking) {
             $message = $this->redis->brPop($this->name, $timeout);
@@ -42,7 +42,7 @@ class RedisTopic implements TopicInterface
             return $job;
         } else {
             $message = $this->redis->rPop($this->name);
-            if ($message === false) {
+            if (false === $message) {
                 return null;
             }
 
@@ -56,18 +56,16 @@ class RedisTopic implements TopicInterface
     public function putJob(Job $job)
     {
         $pushed = $this->redis->lPush($this->name, $job->getBody());
-        if ($pushed === false) {
+        if (false === $pushed) {
             throw new QueueException("Push redis '{$this->name}' queue failed.");
         }
     }
 
     public function buryJob(Job $job)
     {
-
     }
 
     public function finishJob(Job $job)
     {
-
     }
 }

@@ -10,7 +10,7 @@ composer require codeages/plumber2
 ## 使用
 
 ```
-Plumber 2.0.0
+Plumber2 v0.4.0
 
 Usage:
   bin/plumber (run|start|restart|stop)  [--bootstrap=<file>]

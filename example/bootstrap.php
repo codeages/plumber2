@@ -3,7 +3,12 @@
 $options = [
     'app_name' => 'ExampleWorker',
     'queues' => [
-        'default' => [
+        'queue_1' => [
+            'type' => 'beanstalk',
+            'host' => '127.0.0.1',
+            'port' => '11300'
+        ],
+        'queue_2' => [
             'type' => 'redis',
             'host' => '127.0.0.1',
             'port' => '6379'
@@ -21,15 +26,15 @@ $options = [
         [
             'class' => 'Codeages\Plumber\Example\Example1Worker',
             'num' => 1,
-            'queue' => 'default',
-            'topic' => 'test_topic_1',
+            'queue' => 'queue_1',
+            'topic' => 'test_beanstalk_topic',
             'consume_limiter' => 'default',
         ],
         [
             'class' => 'Codeages\Plumber\Example\Example2Worker',
             'num' => 1,
-            'queue' => 'default',
-            'topic' => 'test_topic_2',
+            'queue' => 'queue_2',
+            'topic' => 'test_redis_topic',
         ]
     ],
     'log_path' => __DIR__ . '/plumber.log',

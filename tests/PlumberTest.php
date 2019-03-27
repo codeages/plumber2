@@ -13,19 +13,18 @@ class PlumberTest extends \PHPUnit\Framework\TestCase
                     'numn' => 1,
                     'queue' => 'default',
                     'tube' => 'test',
-                ]
+                ],
             ],
 
             'queues' => [
                 'default' => [
                     'type' => 'redis',
                     'host' => '127.0.0.1',
-                    'port' => '6679'
-                ]
-            ]
+                    'port' => '6679',
+                ],
+            ],
         ];
 
         $plumber = new Plumber($options);
-
     }
 }

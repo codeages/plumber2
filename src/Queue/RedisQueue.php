@@ -2,7 +2,6 @@
 
 namespace Codeages\Plumber\Queue;
 
-
 class RedisQueue implements QueueInterface
 {
     /**
@@ -17,7 +16,7 @@ class RedisQueue implements QueueInterface
             'port' => 0,
             'timeout' => 1,
             'password' => null,
-            'dbindex' => null
+            'dbindex' => null,
         ];
         $options = array_merge($defaults, $options);
 
