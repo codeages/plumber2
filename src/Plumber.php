@@ -164,7 +164,7 @@ class Plumber
                     }
                 }
 
-                $job = $queue->pop($options['tube'], true);
+                $job = $queue->reserveJob($options['tube'], true);
                 pcntl_signal_dispatch();
                 if (is_null($job)) {
                     continue;
@@ -177,7 +177,21 @@ class Plumber
                 //@see https://github.com/swoole/swoole-src/issues/183
                 try {
                     $this->setWorkerProcessName($pool, $workerId, $options['tube'], self::WORKER_STATUS_BUSY);
-                    $worker->execute($job);
+                    $code = $worker->execute($job);
+                    switch ($code) {
+                        case WorkerInterface::FINISH :
+                            $queue->finishJob($options['tube'], $job);
+                            break;
+                        case WorkerInterface::BURY :
+                            $queue->buryJob($options['tube'], $job);
+                            break;
+                        case WorkerInterface::RETRY :
+                            $queue->putJob($options['tube'], $job);
+                            break;
+                        default:
+                            throw new PlumberException("Worker execute must return code.");
+                    }
+
                     $this->setWorkerProcessName($pool, $workerId, $options['tube'], self::WORKER_STATUS_IDLE);
                 } catch (\Throwable $e) {
                     $logger->error($e);

@@ -10,8 +10,7 @@ class Example1Worker extends AbstractWorker
     public function execute(Job $job)
     {
         $this->logger->info("hello example1 worker....");
-//        exit(2);
-//        var_dump($this->container);
-//        exec('/bin/sleep 10');
+
+        return self::FINISH;
     }
 }

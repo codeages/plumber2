@@ -29,6 +29,7 @@
         "codeages/rate-limiter": "^0.2.2"
     },
     "require-dev": {
+        "ext-redis": "*",
         "swoft/swoole-ide-helper": "^4.2",
         "phpunit/phpunit": "^6 || ^7 || ^8"
     }
