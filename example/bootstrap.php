@@ -22,14 +22,14 @@ $options = [
             'class' => 'Codeages\Plumber\Example\Example1Worker',
             'num' => 1,
             'queue' => 'default',
-            'tube' => 'test_tube_1',
+            'topic' => 'test_topic_1',
             'consume_limiter' => 'default',
         ],
         [
             'class' => 'Codeages\Plumber\Example\Example2Worker',
             'num' => 1,
             'queue' => 'default',
-            'tube' => 'test_tube_2',
+            'topic' => 'test_topic_2',
         ]
     ],
     'log_path' => __DIR__ . '/plumber.log',

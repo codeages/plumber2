@@ -53,16 +53,16 @@ class OptionsResolver
                 throw new QueueException("Option 'workers[$i].queue' {$workerOptions['queue']} is not exist.");
             }
 
-            if (!isset($workerOptions['tube'])) {
-                throw new QueueException("Option 'workers[$i].tube' is missing.");
+            if (!isset($workerOptions['topic'])) {
+                throw new QueueException("Option 'workers[$i].topic' is missing.");
             }
 
-            if (!is_string($workerOptions['tube'])) {
-                throw new QueueException("Option 'workers[$i].tube' value type must be string.");
+            if (!is_string($workerOptions['topic'])) {
+                throw new QueueException("Option 'workers[$i].topic' value type must be string.");
             }
 
-            if (strlen($workerOptions['tube']) < 1 || strlen($workerOptions['tube']) > 64) {
-                throw new QueueException("Option 'workers[$i].tube' value length must be between 1 ~ 64");
+            if (strlen($workerOptions['topic']) < 1 || strlen($workerOptions['topic']) > 64) {
+                throw new QueueException("Option 'workers[$i].topic' value length must be between 1 ~ 64");
             }
 
             $workerOptions['num'] = $workerOptions['num'] ?? 1;

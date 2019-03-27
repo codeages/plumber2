@@ -114,8 +114,8 @@ class Plumber
 
             $remainTimes = $recreateLimiter->getAllow($workerId);
             if ($remainTimes <= 0) {
-                $logger->error("[{$this->options['app_name']}] queue `{$options['tube']}` worker #{$workerId} restart failed.");
-                $this->setWorkerProcessName($pool, $workerId, $options['tube'], self::WORKER_STATUS_FAILED);
+                $logger->error("[{$this->options['app_name']}] queue `{$options['topic']}` worker #{$workerId} restart failed.");
+                $this->setWorkerProcessName($pool, $workerId, $options['topic'], self::WORKER_STATUS_FAILED);
 
                 while (true) {
                     pcntl_signal_dispatch();
@@ -130,7 +130,7 @@ class Plumber
 
             $recreateLimiter->check($workerId);
 
-            $this->setWorkerProcessName($pool, $workerId, $options['tube'], self::WORKER_STATUS_IDLE);
+            $this->setWorkerProcessName($pool, $workerId, $options['topic'], self::WORKER_STATUS_IDLE);
 
             /** @var WorkerInterface $worker */
             $worker = new $options['class'];
@@ -153,14 +153,14 @@ class Plumber
             }
 
             $queue = $this->queueFactory->create($options['queue']);
-            $topic = $queue->listenTopic($options['tube']);
+            $topic = $queue->listenTopic($options['topic']);
 
             while ($running) {
                 if ($consumeLimiter) {
                     $remainTimes = $consumeLimiter->getAllow('consume');
                     if ($remainTimes <= 0) {
                         $logger->notice("Worker '{$options['class']}' consume limited.");
-                        $this->setWorkerProcessName($pool, $workerId, $options['tube'], self::WORKER_STATUS_LIMITED);
+                        $this->setWorkerProcessName($pool, $workerId, $options['topic'], self::WORKER_STATUS_LIMITED);
                         pcntl_signal_dispatch();
                         sleep(2);
                         continue;
@@ -179,7 +179,7 @@ class Plumber
 
                 //@see https://github.com/swoole/swoole-src/issues/183
                 try {
-                    $this->setWorkerProcessName($pool, $workerId, $options['tube'], self::WORKER_STATUS_BUSY);
+                    $this->setWorkerProcessName($pool, $workerId, $options['topic'], self::WORKER_STATUS_BUSY);
                     $code = $worker->execute($job);
                     switch ($code) {
                         case WorkerInterface::FINISH :
@@ -195,7 +195,7 @@ class Plumber
                             throw new PlumberException("Worker execute must return code.");
                     }
 
-                    $this->setWorkerProcessName($pool, $workerId, $options['tube'], self::WORKER_STATUS_IDLE);
+                    $this->setWorkerProcessName($pool, $workerId, $options['topic'], self::WORKER_STATUS_IDLE);
                 } catch (\Throwable $e) {
                     $logger->error($e);
                     throw $e;
@@ -298,13 +298,13 @@ class Plumber
         );
     }
 
-    private function setWorkerProcessName(Process\Pool $pool, $workerId, $tube, $status)
+    private function setWorkerProcessName(Process\Pool $pool, $workerId, $topic, $status)
     {
         $name = sprintf(
             'plumber:%s worker #%s listening %s queue (%s)',
             isset($this->options['app_name']) ? " [{$this->options['app_name']}]" : '',
             $workerId,
-            $tube,
+            $topic,
             $status
         );
 
