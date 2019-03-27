@@ -345,7 +345,7 @@ class Plumber
     private function setWorkerProcessName(Process\Pool $pool, $workerId, $topic, $status)
     {
         $name = sprintf(
-            '%splumber: worker #%s listening %s queue (%s)',
+            '%splumber: worker #%s listening %s topic [%s]',
             isset($this->options['app_name']) ? "{$this->options['app_name']}." : '',
             $workerId,
             $topic,
