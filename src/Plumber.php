@@ -345,8 +345,8 @@ class Plumber
     private function setWorkerProcessName(Process\Pool $pool, $workerId, $topic, $status)
     {
         $name = sprintf(
-            'plumber:%s worker #%s listening %s queue (%s)',
-            isset($this->options['app_name']) ? " [{$this->options['app_name']}]" : '',
+            '%splumber: worker #%s listening %s queue (%s)',
+            isset($this->options['app_name']) ? "{$this->options['app_name']}." : '',
             $workerId,
             $topic,
             $status
@@ -358,8 +358,8 @@ class Plumber
     private function setMasterProcessName()
     {
         $name = sprintf(
-            'plumber:%s master',
-            isset($this->options['app_name']) ? " [{$this->options['app_name']}]" : ''
+            '%splumber: master',
+            isset($this->options['app_name']) ? "{$this->options['app_name']}." : ''
         );
 
         @swoole_set_process_name($name);
