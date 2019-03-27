@@ -18,6 +18,21 @@ class Job
     private $body;
 
     /**
+     * @var integer
+     */
+    private $priority;
+
+    /**
+     * @var integer
+     */
+    private $delay;
+
+    /**
+     * @var integer
+     */
+    private $ttr;
+
+    /**
      * Job retry execute times
      *
      * @var integer
@@ -70,5 +85,53 @@ class Job
     public function setRetryTimes($retryTimes)
     {
         $this->retryTimes = $retryTimes;
+    }
+
+    /**
+     * @return int
+     */
+    public function getPriority(): int
+    {
+        return $this->priority;
+    }
+
+    /**
+     * @param int $priority
+     */
+    public function setPriority(int $priority): void
+    {
+        $this->priority = $priority;
+    }
+
+    /**
+     * @return int
+     */
+    public function getDelay(): int
+    {
+        return $this->delay;
+    }
+
+    /**
+     * @param int $delay
+     */
+    public function setDelay(int $delay): void
+    {
+        $this->delay = $delay;
+    }
+
+    /**
+     * @return int
+     */
+    public function getTtr(): int
+    {
+        return $this->ttr;
+    }
+
+    /**
+     * @param int $ttr
+     */
+    public function setTtr(int $ttr): void
+    {
+        $this->ttr = $ttr;
     }
 }

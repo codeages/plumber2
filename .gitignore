@@ -3,3 +3,5 @@
 /example/plumber.pid
 /example/plumber.log
 /composer.lock
+Dockerfile
+docker-compose.yml

@@ -35,12 +35,12 @@ class RedisQueue implements QueueInterface
 
     /**
      * @param string $tube
-     * @param $value
+     * @param Job $job
      * @throws QueueException
      */
-    public function push(string $tube, $value)
+    public function push(string $tube, Job $job)
     {
-        $pushed = $this->redis->lPush($tube, $value);
+        $pushed = $this->redis->lPush($tube, $job->getBody());
         if ($pushed === false) {
             throw new QueueException("Push redis '{$tube}' queue failed.");
         }
@@ -50,7 +50,7 @@ class RedisQueue implements QueueInterface
      * @param string $tube
      * @param bool $blocking
      * @param int $timeout
-     * @return string|null
+     * @return Job|null
      * @throws QueueException
      */
     public function pop(string $tube, $blocking = false, $timeout = 2)
@@ -69,13 +69,20 @@ class RedisQueue implements QueueInterface
                 throw new QueueException("Pop redis '{$tube}' queue failed.");
             }
 
-            return $message[1];
+            $job = new Job();
+            $job->setBody($message[1]);
+
+            return $job;
         } else {
             $message = $this->redis->rPop($tube);
             if ($message === false) {
                 return null;
             }
-            return $message;
+
+            $job = new Job();
+            $job->setBody($message);
+
+            return $job;
         }
     }
 

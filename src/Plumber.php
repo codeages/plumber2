@@ -25,6 +25,20 @@ class Plumber
 
     const LOCK_PROCESS_ERROR = 2;
 
+    const WORKER_STATUS_IDLE = 'idle';
+
+    const WORKER_STATUS_BUSY = 'busy';
+
+    const WORKER_STATUS_LIMITED = 'limited';
+
+    const WORKER_STATUS_FAILED = 'failed';
+
+    /**
+     * Plumber constructor.
+     * @param array $options
+     * @param ContainerInterface|null $container
+     * @throws QueueException
+     */
     public function __construct(array $options, ContainerInterface $container = null)
     {
         $this->options = OptionsResolver::resolve($options);
@@ -34,6 +48,10 @@ class Plumber
         $this->limiterFactory = new RateLimiterFactory($options['rate_limiter']);
     }
 
+    /**
+     * @param $op
+     * @throws \Exception
+     */
     public function main($op)
     {
         switch ($op) {
@@ -52,10 +70,10 @@ class Plumber
         }
     }
 
+
     /**
-     * Start worker processes.
-     *
      * @param bool $daemon
+     * @throws \Exception
      */
     private function start($daemon = false)
     {
@@ -73,20 +91,16 @@ class Plumber
             exit(self::LOCK_PROCESS_ERROR);
         }
 
-        if (isset($this->options['app_name'])) {
-            @swoole_set_process_name(sprintf('plumber: [%s] master', $this->options['app_name']));
-        } else {
-            @swoole_set_process_name('plumber: master');
-        }
+        $this->setMasterProcessName();
 
         $logger = $this->createLogger($daemon);
         ErrorHandler::register($logger);
 
         $workersOptions = $this->getWorkersOptions();
-        $recreateLimiter = $this->createWorkerRecreateLimitor();
+        $recreateLimiter = $this->createWorkerRecreateLimiter();
 
         $pool = new Process\Pool(count($workersOptions));
-        $pool->on('WorkerStart', function($pool, $workerId) use ($workersOptions, $logger, $recreateLimiter) {
+        $pool->on('WorkerStart', function(Process\Pool $pool, $workerId) use ($workersOptions, $logger, $recreateLimiter) {
             $running = true;
             pcntl_signal(SIGTERM, function () use (&$running) {
                 $running = false;
@@ -95,17 +109,12 @@ class Plumber
                 $running = false;
             });
 
-            $process = $pool->getProcess();
             $options = $workersOptions[$workerId];
 
             $remainTimes = $recreateLimiter->getAllow($workerId);
             if ($remainTimes <= 0) {
                 $logger->error("[{$this->options['app_name']}] queue `{$options['tube']}` worker #{$workerId} restart failed.");
-                if (isset($this->options['app_name'])) {
-                    @$process->name("plumber: [{$this->options['app_name']}] queue `{$options['tube']}` worker - stoped");
-                } else {
-                    @$process->name("plumber: queue `{$options['tube']}` worker - stoped");
-                }
+                $this->setWorkerProcessName($pool, $workerId, $options['tube'], self::WORKER_STATUS_FAILED);
 
                 while (true) {
                     pcntl_signal_dispatch();
@@ -120,13 +129,11 @@ class Plumber
 
             $recreateLimiter->check($workerId);
 
-            if (isset($this->options['app_name'])) {
-                @$process->name("plumber: [{$this->options['app_name']}] queue `{$options['tube']}` worker - running");
-            } else {
-                @$process->name("plumber: queue `{$options['tube']}` worker - running");
-            }
+            $this->setWorkerProcessName($pool, $workerId, $options['tube'], self::WORKER_STATUS_IDLE);
 
+            /** @var WorkerInterface $worker */
             $worker = new $options['class'];
+
             if ($worker instanceof LoggerAwareInterface) {
                 $worker->setLogger($logger);
             }
@@ -150,15 +157,16 @@ class Plumber
                     $remainTimes = $consumeLimiter->getAllow('consume');
                     if ($remainTimes <= 0) {
                         $logger->notice("Worker '{$options['class']}' consume limited.");
+                        $this->setWorkerProcessName($pool, $workerId, $options['tube'], self::WORKER_STATUS_LIMITED);
                         pcntl_signal_dispatch();
                         sleep(2);
                         continue;
                     }
                 }
 
-                $message = $queue->pop($options['tube'], true);
+                $job = $queue->pop($options['tube'], true);
                 pcntl_signal_dispatch();
-                if (is_null($message)) {
+                if (is_null($job)) {
                     continue;
                 }
 
@@ -166,19 +174,19 @@ class Plumber
                     $consumeLimiter->check('consume');
                 }
 
-                $job = new Job();
-                $job->setBody($message);
-
                 //@see https://github.com/swoole/swoole-src/issues/183
                 try {
+                    $this->setWorkerProcessName($pool, $workerId, $options['tube'], self::WORKER_STATUS_BUSY);
                     $worker->execute($job);
+                    $this->setWorkerProcessName($pool, $workerId, $options['tube'], self::WORKER_STATUS_IDLE);
                 } catch (\Throwable $e) {
                     $logger->error($e);
+                    throw $e;
                 }
             }
         });
 
-        $pool->on('WorkerStop', function ($pool, $workerId) use ($daemon, $logger) {
+        $pool->on('WorkerStop', function (Process\Pool $pool, $workerId) use ($daemon, $logger) {
             if ($daemon) {
                 $logger->info("worker#{$workerId} is stopped.");
             }
@@ -199,7 +207,7 @@ class Plumber
             return;
         }
 
-        echo 'plumber is stoping...';
+        echo 'plumber is stopping...';
         posix_kill($pid, SIGTERM);
         while (1) {
             if (Process::kill($pid, 0)) {
@@ -213,8 +221,9 @@ class Plumber
         }
     }
 
+
     /**
-     * Reset worker processes.
+     * @throws \Exception
      */
     private function restart()
     {
@@ -226,6 +235,11 @@ class Plumber
         $this->start(true);
     }
 
+    /**
+     * @param bool $daemon
+     * @return Logger
+     * @throws \Exception
+     */
     private function createLogger($daemon = true)
     {
         $logger = new Logger('plumber');
@@ -252,13 +266,41 @@ class Plumber
         return $options;
     }
 
-    private function createWorkerRecreateLimitor()
+    private function createWorkerRecreateLimiter()
     {
+        $name = sprintf(
+            'plumber:%s:rate_limiter:worker_recreate',
+            $this->options['app_name'] ?? ''
+        );
+
         return new RateLimiter(
-            'plumber:rate_limiter:worker_recreate',
+            $name,
             10,
             60,
             new SwooleTableRateLimiterStorage()
         );
+    }
+
+    private function setWorkerProcessName(Process\Pool $pool, $workerId, $tube, $status)
+    {
+        $name = sprintf(
+            'plumber:%s worker #%s listening %s queue (%s)',
+            isset($this->options['app_name']) ? " [{$this->options['app_name']}]" : '',
+            $workerId,
+            $tube,
+            $status
+        );
+
+        @$pool->getProcess()->name($name);
+    }
+
+    private function setMasterProcessName()
+    {
+        $name = sprintf(
+            'plumber:%s master',
+            isset($this->options['app_name']) ? " [{$this->options['app_name']}]" : ''
+        );
+
+        @swoole_set_process_name($name);
     }
 }
