@@ -33,5 +33,6 @@
         "ext-redis": "*",
         "swoft/swoole-ide-helper": "^4.2",
         "phpunit/phpunit": "^6 || ^7 || ^8"
-    }
+    },
+    "bin": ["bin/plumber"]
 }
