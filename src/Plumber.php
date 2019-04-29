@@ -28,8 +28,13 @@ class Plumber
 
     private $op;
 
+    private $bootstrapFile;
+
     private $options;
 
+    /**
+     * @var ContainerInterface
+     */
     private $container;
 
     private $pidFile;
@@ -45,25 +50,26 @@ class Plumber
     /**
      * Plumber constructor.
      *
-     * @param string                  $op
-     * @param array                   $options
-     * @param ContainerInterface|null $container
-     *
+     * @param string $op
+     * @param string $bootstrapFile
      * @throws PlumberException
-     * @throws \Exception
      */
-    public function __construct(string $op, array $options, ContainerInterface $container = null)
+    public function __construct(string $op, string $bootstrapFile)
     {
         $this->op = $op;
-        $this->options = OptionsResolver::resolve($options);
-        $this->container = $container;
+        $this->bootstrapFile = $bootstrapFile;
+
+        $bootstrap = require $bootstrapFile;
+
+        $this->options = OptionsResolver::resolve($bootstrap['options']);
+        $this->container = $bootstrap['container'];
 
         $this->logger = $logger = $this->createLogger();
         ErrorHandler::register($logger);
 
-        $this->pidFile = new PidFile($options['pid_path']);
-        $this->queueFactory = new QueueFactory($options['queues'], $logger);
-        $this->limiterFactory = new RateLimiterFactory($options['rate_limiter']);
+        $this->pidFile = new PidFile($this->options['pid_path']);
+        $this->queueFactory = new QueueFactory($this->options['queues'], $logger);
+        $this->limiterFactory = new RateLimiterFactory($this->options['rate_limiter']);
     }
 
     /**
@@ -108,14 +114,15 @@ class Plumber
             exit(self::LOCK_PROCESS_ERROR);
         }
 
-        $this->setMasterProcessName();
-
         $logger = $this->logger;
 
         $workersOptions = $this->getWorkersOptions();
         $recreateLimiter = $this->createWorkerRecreateLimiter();
+        $workerNum = count($workersOptions);
 
-        $pool = new Process\Pool(count($workersOptions));
+        $this->setMasterProcessName($workerNum);
+
+        $pool = new Process\Pool($workerNum);
         $pool->on('WorkerStart', function (Process\Pool $pool, $workerId) use ($workersOptions, $logger, $recreateLimiter) {
             $running = true;
             pcntl_signal(SIGTERM, function () use (&$running) {
@@ -355,11 +362,13 @@ class Plumber
         @$pool->getProcess()->name($name);
     }
 
-    private function setMasterProcessName()
+    private function setMasterProcessName($workerNum)
     {
         $name = sprintf(
-            '%splumber: master',
-            isset($this->options['app_name']) ? "{$this->options['app_name']}." : ''
+            '%splumber: master [workers: %d, bootstrap: %s]',
+            isset($this->options['app_name']) ? "{$this->options['app_name']}." : '',
+            $workerNum,
+            $this->bootstrapFile
         );
 
         @swoole_set_process_name($name);
