@@ -46,7 +46,7 @@ bin/plumber stop -b bootstrap-file-path
 
 ```
 $ ps aux | grep plumber
-root     2061  0.0  0.5 316308 11992 ?        Ss   02:21   0:00 ExamplApp.plumber: master
+root     2061  0.0  0.5 316308 11992 ?        Ss   02:21   0:00 ExamplApp.plumber: master [workers: 2, bootstrap:/var/www/exampleapp/config/plumber.php]
 root     2062  0.0  0.7 318492 15936 ?        S    02:21   0:00 ExamplApp.plumber: worker #0 listening test_beanstalk_topic topic [idle]
 root     2063  0.0  0.7 318360 15764 ?        S    02:21   0:00 ExamplApp.plumber: worker #1 listening test_redis_topic topic [idle]
 ```
