@@ -69,7 +69,7 @@ class Plumber
 
         $this->pidFile = new PidFile($this->options['pid_path']);
         $this->queueFactory = new QueueFactory($this->options['queues'], $logger);
-        $this->limiterFactory = new RateLimiterFactory($this->options['rate_limiter']);
+        $this->limiterFactory = !empty($this->options['rate_limiter']) ? new RateLimiterFactory($this->options['rate_limiter']) : null;
     }
 
     /**
@@ -170,7 +170,7 @@ class Plumber
                 $worker->setContainer($this->container);
             }
 
-            $consumeLimiter = !empty($options['consume_limiter']) ? $this->limiterFactory->create($options['consume_limiter']) : null;
+            $consumeLimiter = !empty($options['consume_limiter']) && !empty($this->limiterFactory) ? $this->limiterFactory->create($options['consume_limiter']) : null;
             if ($consumeLimiter) {
                 $consumeLimiter->purge('consume');
             }
