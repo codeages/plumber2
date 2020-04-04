@@ -69,7 +69,7 @@ class Plumber
 
         $this->pidFile = new PidFile($this->options['pid_path']);
         $this->queueFactory = new QueueFactory($this->options['queues'], $logger);
-        $this->limiterFactory = !empty($this->options['rate_limiter']) ? new RateLimiterFactory($this->options['rate_limiter']) : null;
+        $this->limiterFactory = !empty($this->options['rate_limits']) ? new RateLimiterFactory($this->options['rate_limits']) : null;
     }
 
     /**
@@ -116,6 +116,7 @@ class Plumber
 
         $logger = $this->logger;
 
+        $plumberOptions = $this->options;
         $workersOptions = $this->getWorkersOptions();
         $recreateLimiter = $this->createWorkerRecreateLimiter();
         $workerNum = count($workersOptions);
@@ -123,7 +124,7 @@ class Plumber
         $this->setMasterProcessName($workerNum);
 
         $pool = new Process\Pool($workerNum);
-        $pool->on('WorkerStart', function (Process\Pool $pool, $workerId) use ($workersOptions, $logger, $recreateLimiter) {
+        $pool->on('WorkerStart', function (Process\Pool $pool, $workerId) use ($plumberOptions, $workersOptions, $logger, $recreateLimiter) {
             $running = true;
             pcntl_signal(SIGTERM, function () use (&$running) {
                 $running = false;
@@ -170,13 +171,22 @@ class Plumber
                 $worker->setContainer($this->container);
             }
 
-            $consumeLimiter = !empty($options['consume_limiter']) && !empty($this->limiterFactory) ? $this->limiterFactory->create($options['consume_limiter']) : null;
-            if ($consumeLimiter) {
-                $consumeLimiter->purge('consume');
-            }
-
             $queue = $this->queueFactory->create($options['queue']);
             $topic = $queue->listenTopic($options['topic']);
+
+            $consumeLimiter = !empty($options['rate_limit']) && !empty($this->limiterFactory) ? $this->limiterFactory->create($options['rate_limit']) : null;
+            if ($consumeLimiter) {
+                $consumeLimiter->purge('consume');
+                $logger->info("worker #{$workerId}, topic {$options['topic']}: rate limiter created.");
+            }
+
+            if (!empty($options['hour_limit']) && !empty($plumberOptions['hour_limits'][$options['hour_limit']])) {
+                $hourLimiterOptions = $plumberOptions['hour_limits'][$options['hour_limit']];
+                $hourLimiter = new HourLimiter($hourLimiterOptions['start'], $hourLimiterOptions['end']);
+                $logger->info("worker #{$workerId}, topic {$options['topic']}: hour limiter created.");
+            } else {
+                $hourLimiter = null;
+            }
 
             $logger->info("worker #{$workerId}, topic {$options['topic']}: worker started.");
 
@@ -184,12 +194,19 @@ class Plumber
                 if ($consumeLimiter) {
                     $remainTimes = $consumeLimiter->getAllow('consume');
                     if ($remainTimes <= 0) {
-                        $logger->notice("worker #{$workerId}, topic {$options['topic']}: consume limited.");
+                        $logger->info("worker #{$workerId}, topic {$options['topic']}: rate limiter limited.");
                         $this->setWorkerProcessName($pool, $workerId, $options['topic'], self::WORKER_STATUS_LIMITED);
                         pcntl_signal_dispatch();
                         sleep(2);
                         continue;
                     }
+                }
+
+                if ($hourLimiter && $hourLimiter->isLimited()) {
+                    $logger->info("worker #{$workerId}, topic {$options['topic']}: hour limiter limited.");
+                    pcntl_signal_dispatch();
+                    sleep(60);
+                    continue;
                 }
 
                 if (0 === $this->reserveTimes % 100) {
