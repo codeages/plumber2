@@ -355,7 +355,7 @@ class Plumber
     private function createWorkerRecreateLimiter()
     {
         $name = sprintf(
-            'plumber:%s:rate_limiter:worker_recreate',
+            'plumber:%s',
             isset($this->options['app_name']) ? $this->options['app_name'] : ''
         );
 
