@@ -109,6 +109,13 @@ class Plumber
             Process::daemon(true, false);
         }
 
+        // Swoole Process::daemon 只 fork 不 setsid，导致 daemon 进程与父进程
+        // 共享进程组，stop() 阶段 posix_kill(-$pid) 杀进程组会失败（errno ESRCH）。
+        // 主动 setsid 创建独立 session 和进程组，保证 stop() 能干净杀掉。
+        if (function_exists('posix_setsid')) {
+            @posix_setsid();
+        }
+
         if (!$this->pidFile->write(posix_getpid())) {
             echo 'error: lock process error.';
             exit(self::LOCK_PROCESS_ERROR);
@@ -279,6 +286,10 @@ class Plumber
 
     /**
      * Stop worker processes.
+     *
+     * 1. 给整个进程组发 SIGTERM，worker 收到后等当前 job 跑完再退出
+     * 2. 阻塞等 master 退出（最长 10 分钟），job 跑多久就等多久
+     * 3. 超时后 SIGKILL 强杀进程组兜底
      */
     private function stop()
     {
@@ -290,17 +301,27 @@ class Plumber
         }
 
         echo 'plumber is stopping...';
-        posix_kill($pid, SIGTERM);
-        while (1) {
-            if (Process::kill($pid, 0)) {
-                continue;
+        @posix_kill(-$pid, SIGTERM);
+
+        // 等 master 退出，最长 10 分钟（让 worker 把当前 job 跑完）
+        $deadline = microtime(true) + 600;
+        while (microtime(true) < $deadline) {
+            if (@pcntl_waitpid($pid, $status, WNOHANG) === $pid) {
+                $this->pidFile->destroy();
+
+                echo "[OK]\n";
+
+                return;
             }
-
-            $this->pidFile->destroy();
-
-            echo "[OK]\n";
-            break;
+            usleep(500000);
         }
+
+        // 超时强杀进程组
+        @posix_kill(-$pid, SIGKILL);
+        @pcntl_waitpid($pid, $status);
+        $this->pidFile->destroy();
+
+        echo "[FORCE KILLED]\n";
     }
 
     /**
