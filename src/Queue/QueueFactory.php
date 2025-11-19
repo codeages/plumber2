@@ -13,7 +13,7 @@ class QueueFactory
      */
     private $logger;
 
-    public function __construct($options = [], LoggerInterface $logger)
+    public function __construct($options, LoggerInterface $logger)
     {
         $this->options = $options;
         $this->logger = $logger;
