@@ -48,11 +48,8 @@ class Plumber
     private $reserveTimes = 1;
 
     /**
-     * Plumber constructor.
-     *
      * @param string $op
      * @param string $bootstrapFile
-     * @throws PlumberException
      */
     public function __construct($op, $bootstrapFile)
     {
@@ -72,9 +69,6 @@ class Plumber
         $this->limiterFactory = !empty($this->options['rate_limits']) ? new RateLimiterFactory($this->options['rate_limits']) : null;
     }
 
-    /**
-     * @throws \Exception
-     */
     public function main()
     {
         switch ($this->op) {
@@ -95,8 +89,6 @@ class Plumber
 
     /**
      * @param bool $daemon
-     *
-     * @throws \Exception
      */
     private function start($daemon = false)
     {
@@ -107,6 +99,12 @@ class Plumber
 
         if ($daemon) {
             Process::daemon(true, false);
+        }
+
+        // 主动 setsid 创建独立 session：兼容老版本 Swoole Process::daemon 不主动 setsid 的情况，
+        // 保证 stop() 的 posix_kill(-$pid) 能命中进程组。
+        if (function_exists('posix_setsid')) {
+            @posix_setsid();
         }
 
         if (!$this->pidFile->write(posix_getpid())) {
@@ -277,9 +275,6 @@ class Plumber
         $pool->start();
     }
 
-    /**
-     * Stop worker processes.
-     */
     private function stop()
     {
         $pid = $this->pidFile->read();
@@ -290,17 +285,47 @@ class Plumber
         }
 
         echo 'plumber is stopping...';
-        posix_kill($pid, SIGTERM);
-        while (1) {
-            if (Process::kill($pid, 0)) {
-                continue;
-            }
+        @posix_kill(-$pid, SIGTERM);
 
-            $this->pidFile->destroy();
+        // 跨用户跑 stop 时 posix_kill 进程组会返回 EPERM（如 jason 杀 root master）；
+        // 立即报错并保留 pidFile，避免假 [OK] 把 pidFile 销毁后进入僵尸状态。
+        // PHP 5.6 的 POSIX 扩展没导出 EPERM 常量，用 errno 数值 1（POSIX 标准统一）。
+        if (posix_get_last_error() === 1) {
+            echo "[FAIL] no permission to signal process group (pid={$pid}); run stop as the same user as master (e.g. sudo -u <worker_owner>).\n";
 
-            echo "[OK]\n";
-            break;
+            exit(1);
         }
+
+        // 跨用户场景 posix_kill($pid, 0) 也会返回 EPERM（不是 ESRCH），
+        // 不能简单用 "kill 返回 false" 判进程不存在。
+        $deadline = microtime(true) + 600;
+        while (microtime(true) < $deadline) {
+            if (!$this->isProcessAlive($pid)) {
+                $this->pidFile->destroy();
+
+                echo "[OK]\n";
+
+                return;
+            }
+            usleep(500000);
+        }
+
+        // 不自动 SIGKILL：worker 跑长 job 时 execute($job) 不响应信号（设计），强杀会丢 job 进度。
+        echo "[TIMEOUT] master still running after 600s, use 'sudo kill -9 {$pid}' to force kill.\n";
+        exit(1);
+    }
+
+    // PHP 5.6 的 POSIX 扩展没导出 EPERM 常量，用 errno 数值 1（POSIX 标准统一）。
+    private function isProcessAlive($pid)
+    {
+        if ($pid <= 0) {
+            return false;
+        }
+        if (@posix_kill($pid, 0)) {
+            return true;
+        }
+
+        return posix_get_last_error() === 1;
     }
 
     /**
