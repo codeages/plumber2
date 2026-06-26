@@ -5,3 +5,4 @@
 /composer.lock
 Dockerfile
 docker-compose.yml
+.phpunit.result.cache
